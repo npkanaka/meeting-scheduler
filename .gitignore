@@ -23,7 +23,7 @@ logs/
 
 # Ignore support dirs
 .testutils
-scripts
+otherscripts
 test
 all_code.sh
 coverage.out

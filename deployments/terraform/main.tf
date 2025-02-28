@@ -1,4 +1,3 @@
-# deployments/terraform/main.tf
 terraform {
   required_providers {
     aws = {
@@ -12,43 +11,43 @@ provider "aws" {
   region = var.aws_region
 }
 
-# VPC
+# Basic VPC setup
 resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
+  cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
-
+  enable_dns_hostnames = true
+  
   tags = {
     Name = "${var.project_name}-vpc"
   }
 }
 
-# Public subnets
+# Create one public subnet for ALB
 resource "aws_subnet" "public" {
-  count                   = length(var.public_subnet_cidrs)
+  count                   = 2
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_cidrs[count.index]
+  cidr_block              = "10.0.${count.index}.0/24"
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-subnet-${count.index + 1}"
+    Name = "${var.project_name}-public-subnet-${count.index}"
   }
 }
 
-# Private subnets
+# Create one private subnet for ECS and RDS
 resource "aws_subnet" "private" {
-  count             = length(var.private_subnet_cidrs)
+  count             = 2
   vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_subnet_cidrs[count.index]
+  cidr_block        = "10.0.${count.index + 10}.0/24"
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
-    Name = "${var.project_name}-private-subnet-${count.index + 1}"
+    Name = "${var.project_name}-private-subnet-${count.index}"
   }
 }
 
-# Internet gateway
+# Internet gateway for public subnet
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -57,26 +56,7 @@ resource "aws_internet_gateway" "main" {
   }
 }
 
-# Elastic IP for NAT
-resource "aws_eip" "nat" {
-  vpc = true
-
-  tags = {
-    Name = "${var.project_name}-nat-eip"
-  }
-}
-
-# NAT gateway
-resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
-
-  tags = {
-    Name = "${var.project_name}-nat"
-  }
-}
-
-# Route tables
+# Route table for public subnet
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -90,44 +70,24 @@ resource "aws_route_table" "public" {
   }
 }
 
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
-  }
-
-  tags = {
-    Name = "${var.project_name}-private-rt"
-  }
-}
-
-# Route table associations
+# Associate route table with public subnet
 resource "aws_route_table_association" "public" {
-  count          = length(var.public_subnet_cidrs)
+  count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_route_table_association" "private" {
-  count          = length(var.private_subnet_cidrs)
-  subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
-}
-
-# Security group for RDS
-resource "aws_security_group" "rds" {
-  name        = "${var.project_name}-rds-sg"
-  description = "Allow PostgreSQL inbound traffic"
+# Security group for ALB
+resource "aws_security_group" "alb" {
+  name        = "${var.project_name}-alb-sg"
+  description = "Allow HTTP inbound traffic"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "PostgreSQL from ECS"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs.id]
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -136,20 +96,15 @@ resource "aws_security_group" "rds" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-  tags = {
-    Name = "${var.project_name}-rds-sg"
-  }
 }
 
 # Security group for ECS
 resource "aws_security_group" "ecs" {
   name        = "${var.project_name}-ecs-sg"
-  description = "Allow inbound traffic to ECS service"
+  description = "Allow traffic from ALB to ECS"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "HTTP from ALB"
     from_port       = 8080
     to_port         = 8080
     protocol        = "tcp"
@@ -162,32 +117,19 @@ resource "aws_security_group" "ecs" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-  tags = {
-    Name = "${var.project_name}-ecs-sg"
-  }
 }
 
-# Security group for ALB
-resource "aws_security_group" "alb" {
-  name        = "${var.project_name}-alb-sg"
-  description = "Allow HTTP/HTTPS inbound traffic"
+# Security group for RDS
+resource "aws_security_group" "rds" {
+  name        = "${var.project_name}-rds-sg"
+  description = "Allow traffic from ECS to RDS"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "HTTP from anywhere"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTPS from anywhere"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
   }
 
   egress {
@@ -196,81 +138,27 @@ resource "aws_security_group" "alb" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-  tags = {
-    Name = "${var.project_name}-alb-sg"
-  }
 }
 
 # RDS subnet group
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-db-subnet-group"
   subnet_ids = aws_subnet.private[*].id
-
-  tags = {
-    Name = "${var.project_name}-db-subnet-group"
-  }
 }
 
-# RDS instance
+# RDS PostgreSQL instance
 resource "aws_db_instance" "postgres" {
   identifier             = "${var.project_name}-db"
   engine                 = "postgres"
-  engine_version         = "14.6"
-  instance_class         = var.db_instance_class
+  engine_version         = "14"
+  instance_class         = "db.t3.micro"
   allocated_storage      = 20
-  storage_type           = "gp2"
   username               = var.db_username
   password               = var.db_password
+  db_name                = var.db_name
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
-  parameter_group_name   = aws_db_parameter_group.postgres.name
-  publicly_accessible    = false
   skip_final_snapshot    = true
-  db_name                = var.db_name
-
-  tags = {
-    Name = "${var.project_name}-db"
-  }
-}
-
-# RDS parameter group
-resource "aws_db_parameter_group" "postgres" {
-  name   = "${var.project_name}-db-pg"
-  family = "postgres14"
-
-  parameter {
-    name  = "log_connections"
-    value = "1"
-  }
-}
-
-# ECR repository
-resource "aws_ecr_repository" "main" {
-  name                 = var.project_name
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = {
-    Name = "${var.project_name}-ecr"
-  }
-}
-
-# ECS cluster
-resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster"
-
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
-
-  tags = {
-    Name = "${var.project_name}-cluster"
-  }
 }
 
 # ALB
@@ -280,12 +168,6 @@ resource "aws_lb" "main" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
-
-  enable_deletion_protection = false
-
-  tags = {
-    Name = "${var.project_name}-alb"
-  }
 }
 
 # ALB target group
@@ -297,21 +179,12 @@ resource "aws_lb_target_group" "main" {
   target_type = "ip"
 
   health_check {
-    healthy_threshold   = 3
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
-    path                = "/health"
-    port                = "traffic-port"
-  }
-
-  tags = {
-    Name = "${var.project_name}-tg"
+    path = "/health"
   }
 }
 
 # ALB listener
-resource "aws_lb_listener" "http" {
+resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
@@ -320,15 +193,16 @@ resource "aws_lb_listener" "http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.main.arn
   }
+}
 
-  tags = {
-    Name = "${var.project_name}-http-listener"
-  }
+# ECS cluster
+resource "aws_ecs_cluster" "main" {
+  name = "${var.project_name}-cluster"
 }
 
 # ECS task execution role
-resource "aws_iam_role" "ecs_task_execution" {
-  name = "${var.project_name}-ecs-task-execution-role"
+resource "aws_iam_role" "task_execution" {
+  name = "${var.project_name}-task-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -342,15 +216,11 @@ resource "aws_iam_role" "ecs_task_execution" {
       }
     ]
   })
-
-  tags = {
-    Name = "${var.project_name}-ecs-task-execution-role"
-  }
 }
 
-# Attach the AmazonECSTaskExecutionRolePolicy to the task execution role
-resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
-  role       = aws_iam_role.ecs_task_execution.name
+# Attach policy to role
+resource "aws_iam_role_policy_attachment" "task_execution" {
+  role       = aws_iam_role.task_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
@@ -359,14 +229,14 @@ resource "aws_ecs_task_definition" "main" {
   family                   = "${var.project_name}-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = var.task_cpu
-  memory                   = var.task_memory
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.task_execution.arn
 
   container_definitions = jsonencode([
     {
       name      = var.project_name
-      image     = "${aws_ecr_repository.main.repository_url}:latest"
+      image     = var.container_image
       essential = true
       portMappings = [
         {
@@ -387,27 +257,19 @@ resource "aws_ecs_task_definition" "main" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          awslogs-group         = "/ecs/${var.project_name}"
+          awslogs-group         = aws_cloudwatch_log_group.main.name
           awslogs-region        = var.aws_region
           awslogs-stream-prefix = "ecs"
         }
       }
     }
   ])
-
-  tags = {
-    Name = "${var.project_name}-task"
-  }
 }
 
 # CloudWatch log group
 resource "aws_cloudwatch_log_group" "main" {
   name              = "/ecs/${var.project_name}"
   retention_in_days = 30
-
-  tags = {
-    Name = "${var.project_name}-logs"
-  }
 }
 
 # ECS service
@@ -415,13 +277,12 @@ resource "aws_ecs_service" "main" {
   name            = "${var.project_name}-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.main.arn
-  desired_count   = var.service_desired_count
+  desired_count   = 2  # For horizontal scaling
   launch_type     = "FARGATE"
 
   network_configuration {
     subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = false
   }
 
   load_balancer {
@@ -430,13 +291,7 @@ resource "aws_ecs_service" "main" {
     container_port   = 8080
   }
 
-  depends_on = [
-    aws_lb_listener.http,
-  ]
-
-  tags = {
-    Name = "${var.project_name}-service"
-  }
+  depends_on = [aws_lb_listener.main]
 }
 
 # Data source for available AWS AZs
@@ -447,14 +302,4 @@ data "aws_availability_zones" "available" {
 # Output the ALB DNS name
 output "alb_dns_name" {
   value = aws_lb.main.dns_name
-}
-
-# Output the ECR repository URL
-output "ecr_repository_url" {
-  value = aws_ecr_repository.main.repository_url
-}
-
-# Output the RDS endpoint
-output "rds_endpoint" {
-  value = aws_db_instance.postgres.endpoint
 }
