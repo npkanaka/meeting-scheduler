@@ -1,0 +1,872 @@
+openapi: 3.0.3
+info:
+  title: Meeting Scheduler API
+  description: >
+    An API for scheduling meetings across different time zones.
+    This API helps organize events by recommending the best time slots based on participants' availability.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://meeting-scheduler.intheproduction.com
+    description: Production server
+
+tags:
+  - name: Events
+    description: Operations related to event management
+  - name: Time Slots
+    description: Operations related to time slot management
+  - name: Availability
+    description: Operations related to user availability
+  - name: Recommendations
+    description: Operations related to time slot recommendations
+
+paths:
+  /events:
+    post:
+      tags:
+        - Events
+      summary: Create a new event
+      description: Creates a new event with the provided details
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Events
+      summary: List all events
+      description: Returns a paginated list of events
+      operationId: listEvents
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of events to return
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 10
+        - name: offset
+          in: query
+          description: Number of events to skip
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /events/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get an event by ID
+      description: Returns an event by its ID
+      operationId: getEvent
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Event found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Events
+      summary: Update an event
+      description: Updates an existing event with the provided details
+      operationId: updateEvent
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '200':
+          description: Event updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Events
+      summary: Delete an event
+      description: Deletes an event by its ID
+      operationId: deleteEvent
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Event deleted successfully
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /events/{id}/timeslots:
+    post:
+      tags:
+        - Time Slots
+      summary: Create a new time slot for an event
+      description: Creates a new time slot for the specified event
+      operationId: createTimeSlot
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeSlotRequest'
+      responses:
+        '201':
+          description: Time slot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSlot'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Time Slots
+      summary: List all time slots for an event
+      description: Returns all time slots for the specified event
+      operationId: listTimeSlots
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of time slots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  time_slots:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TimeSlot'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /timeslots/{id}:
+    put:
+      tags:
+        - Time Slots
+      summary: Update a time slot
+      description: Updates an existing time slot with the provided details
+      operationId: updateTimeSlot
+      parameters:
+        - name: id
+          in: path
+          description: Time slot ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeSlotRequest'
+      responses:
+        '200':
+          description: Time slot updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSlot'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Time slot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Time Slots
+      summary: Delete a time slot
+      description: Deletes a time slot by its ID
+      operationId: deleteTimeSlot
+      parameters:
+        - name: id
+          in: path
+          description: Time slot ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Time slot deleted successfully
+        '404':
+          description: Time slot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /events/{id}/availability:
+    post:
+      tags:
+        - Availability
+      summary: Create a new availability record for an event
+      description: Creates a new availability record for the specified event
+      operationId: createAvailability
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityRequest'
+      responses:
+        '201':
+          description: Availability record created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Availability'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event or user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Availability
+      summary: List all availability records for an event
+      description: Returns all availability records for the specified event
+      operationId: listEventAvailability
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of availability records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  availabilities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Availability'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /events/{id}/availability/{userId}:
+    get:
+      tags:
+        - Availability
+      summary: Get availability records for a user and event
+      description: Returns all availability records for the specified user and event
+      operationId: getUserAvailability
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of availability records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  availabilities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Availability'
+        '404':
+          description: Event or user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Availability
+      summary: Update availability for a user and event
+      description: Updates availability for the specified user and event
+      operationId: updateAvailability
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityRequest'
+      responses:
+        '200':
+          description: Availability updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Availability'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Availability, event, or user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /availability/{id}:
+    delete:
+      tags:
+        - Availability
+      summary: Delete an availability record
+      description: Deletes an availability record by its ID
+      operationId: deleteAvailability
+      parameters:
+        - name: id
+          in: path
+          description: Availability ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Availability record deleted successfully
+        '404':
+          description: Availability record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /events/{id}/recommendations:
+    get:
+      tags:
+        - Recommendations
+      summary: Get time slot recommendations for an event
+      description: Returns recommended time slots for the specified event based on participants' availability
+      operationId: getRecommendations
+      parameters:
+        - name: id
+          in: path
+          description: Event ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of recommendations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns the status of the API
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "OK"
+
+components:
+  schemas:
+    CreateEventRequest:
+      type: object
+      required:
+        - title
+        - duration
+      properties:
+        title:
+          type: string
+          description: The title of the event
+          example: "Brainstorming meeting"
+        description:
+          type: string
+          description: The description of the event
+          example: "Team meeting to discuss new project ideas"
+        duration:
+          type: integer
+          description: The duration of the event in minutes
+          example: 60
+      
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique identifier of the event
+        title:
+          type: string
+          description: The title of the event
+        description:
+          type: string
+          description: The description of the event
+        creator_id:
+          type: string
+          format: uuid
+          description: The ID of the event creator
+        duration:
+          type: integer
+          description: The duration of the event in minutes
+        status:
+          type: string
+          enum: [draft, active, canceled]
+          description: The status of the event
+        created_at:
+          type: string
+          format: date-time
+          description: The timestamp when the event was created
+        updated_at:
+          type: string
+          format: date-time
+          description: The timestamp when the event was last updated
+    
+    TimeSlotRequest:
+      type: object
+      required:
+        - start_time
+        - end_time
+      properties:
+        start_time:
+          type: string
+          format: date-time
+          description: The start time of the time slot
+          example: "2025-01-12T14:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          description: The end time of the time slot
+          example: "2025-01-12T16:00:00Z"
+    
+    TimeSlot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique identifier of the time slot
+        event_id:
+          type: string
+          format: uuid
+          description: The ID of the event
+        start_time:
+          type: string
+          format: date-time
+          description: The start time of the time slot
+        end_time:
+          type: string
+          format: date-time
+          description: The end time of the time slot
+        created_at:
+          type: string
+          format: date-time
+          description: The timestamp when the time slot was created
+        updated_at:
+          type: string
+          format: date-time
+          description: The timestamp when the time slot was last updated
+    
+    AvailabilityRequest:
+      type: object
+      required:
+        - user_id
+        - start_time
+        - end_time
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: The ID of the user
+        start_time:
+          type: string
+          format: date-time
+          description: The start time of the availability
+          example: "2025-01-12T14:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          description: The end time of the availability
+          example: "2025-01-12T16:00:00Z"
+    
+    Availability:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique identifier of the availability
+        user_id:
+          type: string
+          format: uuid
+          description: The ID of the user
+        event_id:
+          type: string
+          format: uuid
+          description: The ID of the event
+        start_time:
+          type: string
+          format: date-time
+          description: The start time of the availability
+        end_time:
+          type: string
+          format: date-time
+          description: The end time of the availability
+        created_at:
+          type: string
+          format: date-time
+          description: The timestamp when the availability was created
+        updated_at:
+          type: string
+          format: date-time
+          description: The timestamp when the availability was last updated
+    
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique identifier of the user
+        name:
+          type: string
+          description: The name of the user
+        email:
+          type: string
+          format: email
+          description: The email of the user
+    
+    TimeSlotResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique identifier of the time slot
+        start_time:
+          type: string
+          format: date-time
+          description: The start time of the time slot
+        end_time:
+          type: string
+          format: date-time
+          description: The end time of the time slot
+    
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique identifier of the user
+        name:
+          type: string
+          description: The name of the user
+        email:
+          type: string
+          format: email
+          description: The email of the user
+    
+    Recommendation:
+      type: object
+      properties:
+        time_slot:
+          $ref: '#/components/schemas/TimeSlotResponse'
+        attendees:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+          description: The list of users who can attend
+        non_attendees:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+          description: The list of users who cannot attend
+        score:
+          type: integer
+          description: The number of attendees
+    
+    RecommendationResponse:
+      type: object
+      properties:
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recommendation'
+          description: The list of recommendations
+    
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message

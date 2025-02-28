@@ -1,0 +1,74 @@
+services:
+  api:
+    image: golang:1.24-alpine
+    working_dir: /app
+    command: ["go", "run", "./cmd/api/main.go"]
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_PORT=8080
+      - DATABASE_DSN=postgres://postgres:postgres@postgres:5432/meeting-scheduler?sslmode=disable
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    volumes:
+      - ./:/app
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: postgres:14
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=meeting-scheduler
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  migration:
+    image: golang:1.24-alpine
+    working_dir: /app
+    command: ["sh", "-c", "apk add --no-cache postgresql-client && chmod +x /app/scripts/migrate.sh && /app/scripts/migrate.sh"]
+    environment:
+      - DATABASE_DSN=postgres://postgres:postgres@postgres:5432/meeting-scheduler?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - ./:/app
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    ports:
+      - "8081:8080"
+    environment:
+      - SWAGGER_JSON=/api/openapi.yaml
+    volumes:
+      - ./api:/api
+    networks:
+      - app-network
+
+volumes:
+  postgres-data:
+
+networks:
+  app-network:
+    driver: bridge

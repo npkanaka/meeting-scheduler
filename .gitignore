@@ -1,0 +1,29 @@
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore dependency directories
+venv/
+__pycache__/
+
+# Ignore environment files
+.env
+*.env
+
+# Ignore build and log directories
+build/
+dist/
+logs/
+
+# Ignore IDE-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore support dirs
+.testutils
+scripts
+test
+all_code.sh
+coverage.out
